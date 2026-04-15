@@ -35,7 +35,7 @@ Then open http://localhost:3000
 | Cold tyre pressure | 19.5 PSI |
 | Target hot pressure | 28–30 PSI |
 | Pressure coefficient | 0.05 PSI/°C |
-| Base mass | 1,180 kg |
+| Base mass | 1,380 kg |
 | Fuel density | 0.735 kg/L |
 
 ## File structure
