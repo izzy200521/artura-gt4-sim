@@ -29,8 +29,16 @@ export function renderDashboard(data, formatLapTime) {
   </div>
   <div class="heat-panel">
     <div class="ct" style="margin-bottom:7px"><span class="dot" style="background:#f5a623"></span>Circuit Paul Ricard — tyre stress heat map</div>
-    <div style="display:flex;gap:5px;margin-bottom:8px">${CORNERS.map((c, i) => `<button class="csb${i === 2 ? ' active' : ''}" onclick="drawHeat(window._simData,'${c}',this)">${c}</button>`).join('')}</div>
-    <div style="position:relative;background:#1a1a1a;border-radius:3px;overflow:hidden;height:220px"><canvas id="heatC" width="760" height="220" style="width:100%;height:100%"></canvas></div>
+    <div style="display:flex;gap:5px;margin-bottom:8px;align-items:center;">
+      ${CORNERS.map((c, i) => `<button class="csb${i === 2 ? ' active' : ''}" onclick="drawHeat(window._simData,'${c}',this)">${c}</button>`).join('')}
+      <span style="font-size:10px;color:#4a4a4a;margin-left:8px">blue = low stress &nbsp;|&nbsp; red = high stress</span>
+    </div>
+    <div style="position:relative;background:#1e1e1e;border-radius:3px;overflow:hidden;height:300px">
+      <canvas id="heatC" width="900" height="300" style="width:100%;height:100%"></canvas>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px">
+      ${PAUL_RICARD_SEGMENTS.map((s,i) => `<span style="font-size:9px;color:#4a4a4a"><span id="segDot${i}" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4a4a4a;margin-right:3px;vertical-align:middle"></span>${s[0]}</span>`).join('')}
+    </div>
   </div>
   <div class="tbl-wrap">
     <div class="tbl-title">Lap-by-lap data</div>
@@ -101,60 +109,195 @@ function buildCharts(data, formatLapTime) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Paul Ricard accurate circuit path
+// Coordinates are normalised 0-1 matching the real circuit shape:
+// Long horizontal rectangle. Pit straight runs left→right along the bottom.
+// Mistral straight runs right→left along the top.
+// Counterclockwise direction (as driven).
+// ---------------------------------------------------------------------------
+
+// Each segment: [name, path_points[], corner_index_FL_FR_RL_RR]
+// Path points are [x, y] normalised 0-1, y=0 bottom, y=1 top
+const TRACK_SEGMENTS = [
+  // 0: Pit straight — long horizontal bottom left to right
+  { name: 'Pit straight', pts: [[0.08,0.08],[0.35,0.08],[0.55,0.08]], type: 'straight' },
+  // 1: Esses de la Verrerie — fast left-right at end of straight (bottom right)
+  { name: 'Verrerie esses', pts: [[0.55,0.08],[0.62,0.10],[0.67,0.14],[0.65,0.20],[0.60,0.24]], type: 'corner' },
+  // 2: La Chicane / Hotel — slow right-left chicane
+  { name: 'La Chicane', pts: [[0.60,0.24],[0.63,0.28],[0.68,0.30],[0.72,0.28],[0.74,0.24]], type: 'corner' },
+  // 3: Comp & Sainte-Baume — two technical righthanders
+  { name: 'Ste-Baume', pts: [[0.74,0.24],[0.78,0.22],[0.82,0.25],[0.84,0.31],[0.82,0.37]], type: 'corner' },
+  // 4: L'Ecole — gentle left onto Mistral
+  { name: "L'Ecole", pts: [[0.82,0.37],[0.80,0.42],[0.76,0.46],[0.70,0.48]], type: 'corner' },
+  // 5: Mistral straight — long top horizontal right to left
+  { name: 'Mistral straight', pts: [[0.70,0.48],[0.50,0.50],[0.30,0.50],[0.14,0.49]], type: 'straight' },
+  // 6: Mistral chicane — mid-straight chicane (1C configuration)
+  { name: 'Mistral chicane', pts: [[0.50,0.50],[0.50,0.54],[0.46,0.56],[0.42,0.54],[0.42,0.50]], type: 'corner' },
+  // 7: Signes — fast sweeping right at end of Mistral
+  { name: 'Signes', pts: [[0.14,0.49],[0.10,0.46],[0.08,0.40],[0.10,0.34],[0.15,0.30]], type: 'corner' },
+  // 8: Double Droite du Beausset — long sweeping double right
+  { name: 'Le Beausset', pts: [[0.15,0.30],[0.20,0.25],[0.27,0.22],[0.32,0.24],[0.34,0.29],[0.32,0.34],[0.27,0.36]], type: 'corner' },
+  // 9: S de Bendor — quick left-right S
+  { name: 'S de Bendor', pts: [[0.27,0.36],[0.24,0.32],[0.20,0.28],[0.16,0.26]], type: 'corner' },
+  // 10: L'Epingle — tight left hairpin
+  { name: "L'Epingle", pts: [[0.16,0.26],[0.12,0.22],[0.08,0.18],[0.07,0.14],[0.09,0.10],[0.13,0.08]], type: 'corner' },
+];
+
+// Segment load indices matching PAUL_RICARD_SEGMENTS order in track_model.js
+// [FL, FR, RL, RR] lateral load 0-1
+const SEG_LOADS = [
+  [0.15,0.15,0.20,0.20],  // 0 Pit straight
+  [0.80,0.65,0.85,0.70],  // 1 Verrerie esses
+  [0.75,0.80,0.70,0.75],  // 2 La Chicane
+  [0.80,0.65,0.85,0.70],  // 3 Ste-Baume
+  [0.65,0.50,0.70,0.55],  // 4 L'Ecole
+  [0.10,0.10,0.15,0.15],  // 5 Mistral straight
+  [0.75,0.80,0.70,0.75],  // 6 Mistral chicane
+  [0.65,0.90,0.60,0.85],  // 7 Signes
+  [0.90,0.60,0.95,0.65],  // 8 Le Beausset
+  [0.70,0.85,0.65,0.80],  // 9 S de Bendor
+  [0.85,0.70,0.90,0.75],  // 10 L'Epingle
+];
+
 window.drawHeat = function (data, corner, btn) {
   document.querySelectorAll('.csb').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
 
-  const ci = ['FL', 'FR', 'RL', 'RR'].indexOf(corner) + 1;
+  const ci = ['FL', 'FR', 'RL', 'RR'].indexOf(corner);
   const avgT = data.reduce((s, d) => s + d[`${corner}_temp`], 0) / data.length;
   const tf = Math.min(1, Math.max(0, (avgT - 20) / 100));
-  const st = PAUL_RICARD_SEGMENTS.map(s => s[ci] * tf);
-  const mn = Math.min(...st), mx = Math.max(...st);
-  const nm = st.map(v => (v - mn) / (mx - mn + 0.001));
+
+  // Compute stress per segment
+  const stress = SEG_LOADS.map(s => s[ci] * tf);
+  const mn = Math.min(...stress), mx = Math.max(...stress);
+  const nm = stress.map(v => (v - mn) / (mx - mn + 0.001));
 
   const cv = document.getElementById('heatC');
   const cx = cv.getContext('2d');
   const W = cv.width, H = cv.height;
   cx.clearRect(0, 0, W, H);
+
+  // Background
   cx.fillStyle = '#1a1a1a';
   cx.fillRect(0, 0, W, H);
 
-  function hc(n) {
-    const s = [[74, 144, 217], [80, 200, 80], [245, 166, 35], [232, 64, 64]];
-    const t = n * (s.length - 1), i = Math.floor(t), f = t - i;
-    const a = s[Math.min(i, 2)], b = s[Math.min(i + 1, 3)];
-    return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`;
+  // Draw asphalt base (slightly lighter background for circuit area)
+  cx.strokeStyle = '#2a2a2a';
+  cx.lineWidth = 18;
+  cx.lineJoin = 'round';
+  cx.lineCap = 'round';
+
+  function tx(x) { return 30 + x * (W - 60); }
+  function ty(y) { return H - 20 - y * (H - 40); }
+
+  function heatColor(n) {
+    const stops = [
+      [74, 144, 217],
+      [100, 190, 100],
+      [245, 166, 35],
+      [232, 64, 64]
+    ];
+    const t = n * (stops.length - 1);
+    const i = Math.floor(t);
+    const f = t - i;
+    const a = stops[Math.min(i, stops.length - 2)];
+    const b = stops[Math.min(i + 1, stops.length - 1)];
+    return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`;
   }
 
-  const pts = [
-    [[.04, .22], [.13, .80]], [[.13, .80], [.44, .85]], [[.44, .85], [.57, .74]],
-    [[.57, .74], [.68, .59]], [[.68, .59], [.80, .45]], [[.80, .45], [.87, .29]],
-    [[.87, .29], [.78, .17]], [[.78, .17], [.48, .11]], [[.48, .11], [.23, .19]],
-    [[.23, .19], [.04, .22]]
-  ];
+  // First pass: draw thick dark base track outline
+  cx.beginPath();
+  let first = true;
+  for (const seg of TRACK_SEGMENTS) {
+    for (const pt of seg.pts) {
+      if (first) { cx.moveTo(tx(pt[0]), ty(pt[1])); first = false; }
+      else cx.lineTo(tx(pt[0]), ty(pt[1]));
+    }
+  }
+  cx.strokeStyle = '#2d2d2d';
+  cx.lineWidth = 22;
+  cx.stroke();
 
-  pts.forEach(([a, b], i) => {
-    const x1 = a[0] * W, y1 = (1 - a[1]) * H, x2 = b[0] * W, y2 = (1 - b[1]) * H;
-    cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2);
-    cx.strokeStyle = hc(nm[i]);
-    cx.lineWidth = 6 + nm[i] * 10;
-    cx.lineCap = 'round'; cx.stroke();
-    cx.fillStyle = '#88888888';
-    cx.font = '9px Consolas,monospace';
-    cx.textAlign = 'center';
-    cx.fillText(PAUL_RICARD_SEGMENTS[i][0], (x1 + x2) / 2, (y1 + y2) / 2 - 7);
+  // Second pass: draw white track surface
+  cx.beginPath();
+  first = true;
+  for (const seg of TRACK_SEGMENTS) {
+    for (const pt of seg.pts) {
+      if (first) { cx.moveTo(tx(pt[0]), ty(pt[1])); first = false; }
+      else cx.lineTo(tx(pt[0]), ty(pt[1]));
+    }
+  }
+  cx.strokeStyle = '#383838';
+  cx.lineWidth = 16;
+  cx.stroke();
+
+  // Third pass: draw heat colour per segment
+  TRACK_SEGMENTS.forEach((seg, i) => {
+    if (seg.pts.length < 2) return;
+    cx.beginPath();
+    cx.moveTo(tx(seg.pts[0][0]), ty(seg.pts[0][1]));
+    for (let p = 1; p < seg.pts.length; p++) {
+      cx.lineTo(tx(seg.pts[p][0]), ty(seg.pts[p][1]));
+    }
+    cx.strokeStyle = heatColor(nm[i]);
+    cx.lineWidth = 8;
+    cx.lineCap = 'round';
+    cx.lineJoin = 'round';
+    cx.stroke();
+
+    // Update legend dot colour
+    const dot = document.getElementById(`segDot${i}`);
+    if (dot) dot.style.background = heatColor(nm[i]);
   });
 
-  const grd = cx.createLinearGradient(W - 24, 0, W - 24, H);
-  grd.addColorStop(0, 'rgb(232,64,64)');
-  grd.addColorStop(.5, 'rgb(245,166,35)');
-  grd.addColorStop(1, 'rgb(74,144,217)');
-  cx.fillStyle = grd; cx.fillRect(W - 18, 8, 8, H - 16);
-  cx.fillStyle = '#9d9d9d'; cx.font = '9px Consolas';
-  cx.textAlign = 'left';
-  cx.fillText('Hi', W - 16, 13);
-  cx.fillText('Lo', W - 14, H - 4);
-  cx.fillStyle = '#569cd6'; cx.font = '10px Consolas';
+  // Corner labels
+  const labels = [
+    { text: 'S/F', x: 0.30, y: 0.04 },
+    { text: 'Verrerie', x: 0.63, y: 0.27 },
+    { text: 'Chicane', x: 0.72, y: 0.20 },
+    { text: 'Ste-Baume', x: 0.82, y: 0.40 },
+    { text: 'Mistral ▶', x: 0.50, y: 0.56 },
+    { text: 'Signes', x: 0.06, y: 0.43 },
+    { text: 'Beausset', x: 0.30, y: 0.20 },
+    { text: "Epingle", x: 0.06, y: 0.06 },
+  ];
+  cx.font = '10px Consolas, monospace';
   cx.textAlign = 'center';
-  cx.fillText(`${corner} — avg ${avgT.toFixed(1)}°C`, W / 2, H - 5);
+  labels.forEach(l => {
+    cx.fillStyle = '#555555';
+    cx.fillText(l.text, tx(l.x), ty(l.y));
+  });
+
+  // Start/finish line
+  const sfx = tx(0.08);
+  const sfy = ty(0.08);
+  cx.beginPath();
+  cx.moveTo(sfx, sfy - 12);
+  cx.lineTo(sfx, sfy + 12);
+  cx.strokeStyle = '#ffffff44';
+  cx.lineWidth = 2;
+  cx.setLineDash([3, 3]);
+  cx.stroke();
+  cx.setLineDash([]);
+
+  // Colour bar legend
+  const barX = W - 22, barY = 20, barH = H - 45;
+  const grad = cx.createLinearGradient(barX, barY, barX, barY + barH);
+  grad.addColorStop(0, 'rgb(232,64,64)');
+  grad.addColorStop(0.5, 'rgb(245,166,35)');
+  grad.addColorStop(1, 'rgb(74,144,217)');
+  cx.fillStyle = grad;
+  cx.fillRect(barX, barY, 8, barH);
+  cx.fillStyle = '#9d9d9d';
+  cx.font = '9px Consolas';
+  cx.textAlign = 'left';
+  cx.fillText('Hi', barX - 1, barY + 9);
+  cx.fillText('Lo', barX - 1, barY + barH);
+
+  // Info label
+  cx.fillStyle = '#569cd6';
+  cx.font = '10px Consolas';
+  cx.textAlign = 'center';
+  cx.fillText(`${corner} tyre  —  avg ${avgT.toFixed(1)} °C  —  Circuit Paul Ricard (GT4 layout)`, W / 2, H - 4);
 };
