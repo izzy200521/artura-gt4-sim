@@ -1,5 +1,5 @@
 export const FUEL_DENSITY = 0.735;
-export const BASE_MASS_KG = 1180;
+export const BASE_MASS_KG = 1380;
 export const REFERENCE_MASS_KG = 1260;
 export const FRONT_DIST_BASE = 0.44;
 
