@@ -74,6 +74,130 @@
     </div>
   </div>
 
-  <script type="module" src="src/simulation.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const CORNERS = ['FL','FR','RL','RR'];
+const CC = {FL:'#e84040',FR:'#f5a623',RL:'#4a90d9',RR:'#7ed321'};
+const LC = {FL:0.90,FR:1.05,RL:1.10,RR:0.95};
+const PR = [
+  ['T1 La Sainte-Baume',0.85,0.70,0.90,0.75],
+  ['Mistral Straight',0.10,0.10,0.15,0.15],
+  ['Signes',0.65,0.90,0.60,0.85],
+  ['T3-T4 Virage du Pont',0.80,0.65,0.85,0.70],
+  ['Back Infield Chicane',0.75,0.80,0.70,0.75],
+  ['T9 Beausset',0.90,0.60,0.95,0.65],
+  ['T10-T11 Complex',0.70,0.85,0.65,0.80],
+  ['Pit Straight',0.15,0.15,0.20,0.20],
+  ['T15 Final Hairpin',0.80,0.75,0.85,0.80],
+  ['Exit Complex',0.55,0.70,0.50,0.65],
+];
+const charts = {};
+const DEFAULTS = {totalLaps:28,fuelStart:90,wuLaps:2,trackTemp:38,airTemp:24,humidity:45,coldPsi:19.5,tempLow:80,tempHigh:105,scLap:0,scDur:3,wxLap:0,baseLap:127.5,fuelRate:3.5,degRate:0.0012};
+
+function gv(id){return parseFloat(document.getElementById(id).value)||0}
+function fmt(s){const m=Math.floor(s/60),sec=s-m*60;return m+':'+(sec<10?'0':'')+sec.toFixed(3)}
+function tempGrip(t,lo,hi){
+  if(t>=lo&&t<=hi)return 1.0;
+  if(t<lo)return 0.65+0.35*Math.max(0,(t-30)/(lo-30));
+  const ex=(t-hi)/15;return Math.max(0.50,1-0.50*Math.pow(ex,1.5));
+}
+
+function validate(){
+  const el=document.getElementById('validationMsg');
+  const tl=gv('totalLaps'),fs=gv('fuelStart'),tlo=gv('tempLow'),thi=gv('tempHigh');
+  let msg='';
+  if(tl<5||tl>60)msg='Laps must be 5–60.';
+  else if(fs<5||fs>120)msg='Fuel must be 5–120 L.';
+  else if(tlo>=thi)msg='Temp low must be less than temp high.';
+  if(msg){el.textContent=msg;el.style.display='block';return false}
+  el.style.display='none';return true;
+}
+
+function resetInputs(){
+  Object.entries(DEFAULTS).forEach(([k,v])=>{const el=document.getElementById(k);if(el)el.value=v});
+  document.getElementById('customStyle').value='';
+  document.getElementById('drivingStyle').value='1.0';
+}
+
+function runSim(){
+  if(!validate())return;
+  document.getElementById('runBtn').disabled=true;
+  document.getElementById('progressWrap').style.display='block';
+
+  const totalLaps=Math.round(gv('totalLaps'));
+  const fuelStart=gv('fuelStart');
+  const wuLaps=Math.round(gv('wuLaps'));
+  const trackTempInit=gv('trackTemp');
+  const airTempInit=gv('airTemp');
+  const coldPsi=gv('coldPsi');
+  const tempLow=gv('tempLow');
+  const tempHigh=gv('tempHigh');
+  const scLap=Math.round(gv('scLap'));
+  const scDur=Math.round(gv('scDur'));
+  const wxLap=Math.round(gv('wxLap'));
+  const baseLapTime=gv('baseLap');
+  const fuelRate=gv('fuelRate');
+  const degRate=gv('degRate');
+  const customStyleVal=document.getElementById('customStyle').value;
+  const style=customStyleVal!==''?parseFloat(customStyleVal):gv('drivingStyle');
+
+  let tT={FL:28,FR:28,RL:28,RR:28};
+  let tP={FL:coldPsi,FR:coldPsi,RL:coldPsi,RR:coldPsi};
+  let tG={FL:1,FR:1,RL:1,RR:1};
+  let tD={FL:0,FR:0,RL:0,RR:0};
+  let fuel=fuelStart,trackTemp=trackTempInit,airTemp=airTempInit;
+  let gripEvo=1.0,weather='dry';
+  const data=[];
+
+  for(let lap=1;lap<=totalLaps;lap++){
+    const isWU=lap<=wuLaps;
+    const isSC=scLap>0&&lap>=scLap&&lap<scLap+scDur;
+    if(wxLap>0&&lap===wxLap){weather='damp';gripEvo*=0.82;trackTemp-=5}
+    if(lap>totalLaps/2){trackTemp-=0.15;airTemp-=0.08}
+    gripEvo=lap<=10?Math.min(1.0,1+0.003*lap):Math.min(1.04,gripEvo+0.0005);
+
+    const fuelBurn=isSC?fuelRate*0.6:isWU?fuelRate*0.5:+(fuelRate*style+(Math.random()-0.5)*0.24).toFixed(3);
+    fuel=Math.max(0,fuel-fuelBurn);
+    const fuelMass=fuel*0.735,totalMass=1180+fuelMass;
+    const frontLoad=+(totalMass*(0.44+0.008*(fuel/120))).toFixed(1);
+    const rearLoad=+(totalMass-frontLoad).toFixed(1);
+
+    for(const c of CORNERS){
+      const lc=LC[c],ff=1+Math.max(0,fuelMass-51.45)*0.0008;
+      const heat=isWU?6*0.4*lc*style*ff:6*lc*style*ff;
+      const amb=(trackTemp+airTemp)/2;
+      const cool=0.18*Math.max(0,tT[c]-amb);
+      tT[c]=Math.max(amb,tT[c]+heat-cool+(Math.random()-0.5)*2);
+      tP[c]=Math.max(coldPsi,coldPsi+0.050*(tT[c]-15));
+      const inWin=tT[c]>=tempLow&&tT[c]<=tempHigh;
+      const overT=tT[c]>tempHigh+15;
+      let dg=inWin?degRate*0.67:overT?degRate+0.0035*((tT[c]-(tempHigh+15))/10):degRate*(1+Math.max(0.5,1-tT[c]/tempLow));
+      dg*=style;
+      tD[c]=Math.min(1,tD[c]+dg);
+      tG[c]=Math.max(0,(1-tD[c])*tempGrip(tT[c],tempLow,tempHigh));
+    }
+
+    const avgGrip=CORNERS.reduce((s,c)=>s+tG[c],0)/4;
+    const trkGrip=(weather==='damp'?0.82:1)*gripEvo;
+    const massDelta=(totalMass-1260)*0.035;
+    let lt=baseLapTime;
+    if(!isWU){lt+=Math.max(0,1-avgGrip)*30+(1-trkGrip)*8+massDelta-(style-1)*0.8-Math.min(0.5,lap*0.05)}
+    else{lt*=1.20}
+    if(isSC)lt*=1.35;
+
+    data.push({lap,lapTime:+lt.toFixed(3),isWU,isSC,weather,
+      FL_temp:+tT.FL.toFixed(1),FR_temp:+tT.FR.toFixed(1),RL_temp:+tT.RL.toFixed(1),RR_temp:+tT.RR.toFixed(1),
+      FL_pressure:+tP.FL.toFixed(2),FR_pressure:+tP.FR.toFixed(2),RL_pressure:+tP.RL.toFixed(2),RR_pressure:+tP.RR.toFixed(2),
+      FL_grip:+tG.FL.toFixed(4),FR_grip:+tG.FR.toFixed(4),RL_grip:+tG.RL.toFixed(4),RR_grip:+tG.RR.toFixed(4),
+      FL_deg:+tD.FL.toFixed(4),FR_deg:+tD.FR.toFixed(4),RL_deg:+tD.RL.toFixed(4),RR_deg:+tD.RR.toFixed(4),
+      fuel:+fuel.toFixed(2),totalMass:+totalMass.toFixed(1),frontLoad,rearLoad,
+    });
+
+    document.getElementById('progressFill').style.width=Math.round(lap/totalLaps*100)+'%';
+    document.getElementById('progressLabel').textContent=`Lap ${lap} / ${totalLaps}`;
+  }
+
+  window._simData=data;
+  setTimeout(()=>{renderDashboard(data);document.getElementById('runBtn').disabled=false;document.getElementById('progressWrap').st
 </body>
 </html>
