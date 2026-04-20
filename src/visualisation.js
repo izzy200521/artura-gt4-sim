@@ -33,11 +33,12 @@ export function renderDashboard(data, formatLapTime) {
       ${CORNERS.map((c, i) => `<button class="csb${i === 2 ? ' active' : ''}" onclick="drawHeat(window._simData,'${c}',this)">${c}</button>`).join('')}
       <span style="font-size:10px;color:#4a4a4a;margin-left:8px">blue = low stress &nbsp;|&nbsp; red = high stress</span>
     </div>
-    <div style="position:relative;background:#1e1e1e;border-radius:3px;overflow:hidden;height:300px">
-      <canvas id="heatC" width="900" height="300" style="width:100%;height:100%"></canvas>
+    <div style="position:relative;background:#1a1a1a;border-radius:3px;overflow:hidden;height:320px">
+      <canvas id="heatC" width="960" height="320" style="width:100%;height:100%"></canvas>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px">
-      ${PAUL_RICARD_SEGMENTS.map((s,i) => `<span style="font-size:9px;color:#4a4a4a"><span id="segDot${i}" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4a4a4a;margin-right:3px;vertical-align:middle"></span>${s[0]}</span>`).join('')}
+    <div style="margin-top:8px;font-size:10px;color:#3c3c3c">
+      For telemetry overlay with real CSV data open 
+      <a href="telemetry.html" style="color:#569cd6">telemetry.html</a>
     </div>
   </div>
   <div class="tbl-wrap">
@@ -56,8 +57,7 @@ export function renderDashboard(data, formatLapTime) {
 function buildCharts(data, formatLapTime) {
   const laps = data.map(d => d.lap);
   const base = {
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     plugins: { legend: { display: false } },
     elements: { point: { radius: 1.5 } },
     animation: { duration: 300 }
@@ -66,7 +66,6 @@ function buildCharts(data, formatLapTime) {
     y: { grid: { color: '#2a2a2a' }, ticks: { color: '#6a9955', font: { size: 9 } }, border: { color: '#3c3c3c' } },
     x: { grid: { color: '#2a2a2a' }, ticks: { color: '#6a9955', font: { size: 9 } }, border: { color: '#3c3c3c' } }
   };
-
   function mk(id, datasets, extra) {
     if (charts[id]) charts[id].destroy();
     charts[id] = new Chart(document.getElementById(id), {
@@ -75,214 +74,128 @@ function buildCharts(data, formatLapTime) {
       options: { ...base, ...extra, scales: { ...scls, ...(extra?.scales || {}) } }
     });
   }
-
   mk('cT', CORNERS.map(c => ({ label: c, data: data.map(d => d[`${c}_temp`]), borderColor: CC[c], borderWidth: 1.5, fill: false, tension: .35, pointRadius: 1.2 })), {});
   mk('cP', CORNERS.map(c => ({ label: c, data: data.map(d => d[`${c}_pressure`]), borderColor: CC[c], borderWidth: 1.5, fill: false, tension: .35, pointRadius: 1.2 })), { scales: { ...scls, y: { ...scls.y, min: 18, max: 34 } } });
   mk('cG', CORNERS.map(c => ({ label: c, data: data.map(d => d[`${c}_grip`]), borderColor: CC[c], borderWidth: 1.5, fill: false, tension: .35, pointRadius: 1.2 })), { scales: { ...scls, y: { ...scls.y, min: 0.4, max: 1.05 } } });
   mk('cD', CORNERS.map(c => ({ label: c, data: data.map(d => d[`${c}_deg`]), borderColor: CC[c], backgroundColor: CC[c] + '18', borderWidth: 1.5, fill: true, tension: .35, pointRadius: 1.2 })), {});
-
-  const roll = data.map((d, i) => {
-    const sl = data.slice(Math.max(0, i - 2), i + 1);
-    return +(sl.reduce((s, x) => s + x.lapTime, 0) / sl.length).toFixed(3);
-  });
+  const roll = data.map((d, i) => { const sl = data.slice(Math.max(0, i - 2), i + 1); return +(sl.reduce((s, x) => s + x.lapTime, 0) / sl.length).toFixed(3); });
   mk('cL', [
     { label: 'Lap', data: data.map(d => d.lapTime), borderColor: '#007acc', borderWidth: 1.5, fill: false, tension: .2, pointRadius: 1.5 },
     { label: '3avg', data: roll, borderColor: '#ff3c5f', borderWidth: 2, fill: false, tension: .4, pointRadius: 0, borderDash: [4, 3] }
   ], { scales: { ...scls, y: { ...scls.y, ticks: { ...scls.y.ticks, callback: v => { const m = Math.floor(v / 60), s = v - m * 60; return `${m}:${s < 10 ? '0' : ''}${s.toFixed(0)}`; } } } } });
-
   if (charts.cF) charts.cF.destroy();
   charts.cF = new Chart(document.getElementById('cF'), {
     type: 'line',
-    data: {
-      labels: laps, datasets: [
-        { label: 'Fuel', data: data.map(d => d.fuel), borderColor: '#f5a623', borderWidth: 1.5, fill: false, tension: .35, pointRadius: 1.2, yAxisID: 'y' },
-        { label: 'Mass', data: data.map(d => d.totalMass), borderColor: '#4a90d9', borderWidth: 1.5, fill: false, tension: .35, pointRadius: 1.2, borderDash: [5, 3], yAxisID: 'y2' }
-      ]
-    },
-    options: {
-      ...base, scales: {
-        y: { ...scls.y, ticks: { ...scls.y.ticks, color: '#f5a623' }, position: 'left' },
-        y2: { grid: { display: false }, ticks: { color: '#4a90d9', font: { size: 9 } }, border: { color: '#3c3c3c' }, position: 'right' },
-        x: scls.x
-      }
-    }
+    data: { labels: laps, datasets: [
+      { label: 'Fuel', data: data.map(d => d.fuel), borderColor: '#f5a623', borderWidth: 1.5, fill: false, tension: .35, pointRadius: 1.2, yAxisID: 'y' },
+      { label: 'Mass', data: data.map(d => d.totalMass), borderColor: '#4a90d9', borderWidth: 1.5, fill: false, tension: .35, pointRadius: 1.2, borderDash: [5, 3], yAxisID: 'y2' }
+    ]},
+    options: { ...base, scales: {
+      y: { ...scls.y, ticks: { ...scls.y.ticks, color: '#f5a623' }, position: 'left' },
+      y2: { grid: { display: false }, ticks: { color: '#4a90d9', font: { size: 9 } }, border: { color: '#3c3c3c' }, position: 'right' },
+      x: scls.x
+    }}
   });
 }
 
-// ---------------------------------------------------------------------------
-// Paul Ricard accurate circuit path
-// Coordinates are normalised 0-1 matching the real circuit shape:
-// Long horizontal rectangle. Pit straight runs left→right along the bottom.
-// Mistral straight runs right→left along the top.
-// Counterclockwise direction (as driven).
-// ---------------------------------------------------------------------------
-
-// Each segment: [name, path_points[], corner_index_FL_FR_RL_RR]
-// Path points are [x, y] normalised 0-1, y=0 bottom, y=1 top
-const TRACK_SEGMENTS = [
-  // 0: Pit straight — long horizontal bottom left to right
-  { name: 'Pit straight', pts: [[0.08,0.08],[0.35,0.08],[0.55,0.08]], type: 'straight' },
-  // 1: Esses de la Verrerie — fast left-right at end of straight (bottom right)
-  { name: 'Verrerie esses', pts: [[0.55,0.08],[0.62,0.10],[0.67,0.14],[0.65,0.20],[0.60,0.24]], type: 'corner' },
-  // 2: La Chicane / Hotel — slow right-left chicane
-  { name: 'La Chicane', pts: [[0.60,0.24],[0.63,0.28],[0.68,0.30],[0.72,0.28],[0.74,0.24]], type: 'corner' },
-  // 3: Comp & Sainte-Baume — two technical righthanders
-  { name: 'Ste-Baume', pts: [[0.74,0.24],[0.78,0.22],[0.82,0.25],[0.84,0.31],[0.82,0.37]], type: 'corner' },
-  // 4: L'Ecole — gentle left onto Mistral
-  { name: "L'Ecole", pts: [[0.82,0.37],[0.80,0.42],[0.76,0.46],[0.70,0.48]], type: 'corner' },
-  // 5: Mistral straight — long top horizontal right to left
-  { name: 'Mistral straight', pts: [[0.70,0.48],[0.50,0.50],[0.30,0.50],[0.14,0.49]], type: 'straight' },
-  // 6: Mistral chicane — mid-straight chicane (1C configuration)
-  { name: 'Mistral chicane', pts: [[0.50,0.50],[0.50,0.54],[0.46,0.56],[0.42,0.54],[0.42,0.50]], type: 'corner' },
-  // 7: Signes — fast sweeping right at end of Mistral
-  { name: 'Signes', pts: [[0.14,0.49],[0.10,0.46],[0.08,0.40],[0.10,0.34],[0.15,0.30]], type: 'corner' },
-  // 8: Double Droite du Beausset — long sweeping double right
-  { name: 'Le Beausset', pts: [[0.15,0.30],[0.20,0.25],[0.27,0.22],[0.32,0.24],[0.34,0.29],[0.32,0.34],[0.27,0.36]], type: 'corner' },
-  // 9: S de Bendor — quick left-right S
-  { name: 'S de Bendor', pts: [[0.27,0.36],[0.24,0.32],[0.20,0.28],[0.16,0.26]], type: 'corner' },
-  // 10: L'Epingle — tight left hairpin
-  { name: "L'Epingle", pts: [[0.16,0.26],[0.12,0.22],[0.08,0.18],[0.07,0.14],[0.09,0.10],[0.13,0.08]], type: 'corner' },
+export const TRACK_PATH = [
+  { name: 'S/F straight',   si: 0,  pts: [[0.62,0.45],[0.52,0.45],[0.40,0.45],[0.30,0.45]] },
+  { name: 'Verrerie',       si: 1,  pts: [[0.30,0.45],[0.26,0.42],[0.22,0.38],[0.20,0.33],[0.22,0.28],[0.26,0.25]] },
+  { name: 'Chicane',        si: 2,  pts: [[0.26,0.25],[0.23,0.22],[0.20,0.20],[0.17,0.22],[0.15,0.26]] },
+  { name: 'Ste-Baume',      si: 3,  pts: [[0.15,0.26],[0.12,0.30],[0.10,0.36],[0.11,0.43],[0.14,0.48]] },
+  { name: "L'Ecole",        si: 4,  pts: [[0.14,0.48],[0.14,0.54],[0.16,0.58],[0.20,0.60]] },
+  { name: 'Mistral',        si: 5,  pts: [[0.20,0.60],[0.35,0.62],[0.50,0.63],[0.65,0.63],[0.78,0.62]] },
+  { name: 'Mistral chicane',si: 6,  pts: [[0.50,0.63],[0.51,0.67],[0.54,0.69],[0.57,0.67],[0.57,0.63]] },
+  { name: 'Signes',         si: 7,  pts: [[0.78,0.62],[0.84,0.60],[0.88,0.55],[0.88,0.50],[0.86,0.45]] },
+  { name: 'Teardrop T11',   si: 8,  pts: [[0.86,0.45],[0.88,0.40],[0.90,0.34],[0.92,0.28],[0.90,0.22],[0.86,0.18]] },
+  { name: 'Teardrop T12',   si: 8,  pts: [[0.86,0.18],[0.82,0.16],[0.78,0.18],[0.76,0.24],[0.78,0.30],[0.82,0.34],[0.84,0.40]] },
+  { name: 'Le Village',     si: 9,  pts: [[0.84,0.40],[0.80,0.42],[0.74,0.42],[0.68,0.40]] },
+  { name: 'Virage Tour',    si: 10, pts: [[0.68,0.40],[0.64,0.38],[0.60,0.35],[0.58,0.30],[0.60,0.26]] },
+  { name: 'Virage du Pont', si: 11, pts: [[0.60,0.26],[0.63,0.30],[0.66,0.35],[0.66,0.40],[0.64,0.45],[0.62,0.45]] },
 ];
 
-// Segment load indices matching PAUL_RICARD_SEGMENTS order in track_model.js
-// [FL, FR, RL, RR] lateral load 0-1
 const SEG_LOADS = [
-  [0.15,0.15,0.20,0.20],  // 0 Pit straight
-  [0.80,0.65,0.85,0.70],  // 1 Verrerie esses
-  [0.75,0.80,0.70,0.75],  // 2 La Chicane
-  [0.80,0.65,0.85,0.70],  // 3 Ste-Baume
-  [0.65,0.50,0.70,0.55],  // 4 L'Ecole
-  [0.10,0.10,0.15,0.15],  // 5 Mistral straight
-  [0.75,0.80,0.70,0.75],  // 6 Mistral chicane
-  [0.65,0.90,0.60,0.85],  // 7 Signes
-  [0.90,0.60,0.95,0.65],  // 8 Le Beausset
-  [0.70,0.85,0.65,0.80],  // 9 S de Bendor
-  [0.85,0.70,0.90,0.75],  // 10 L'Epingle
+  [0.10,0.10,0.15,0.15],
+  [0.80,0.65,0.85,0.70],
+  [0.75,0.80,0.70,0.75],
+  [0.80,0.65,0.85,0.70],
+  [0.65,0.50,0.70,0.55],
+  [0.10,0.10,0.15,0.15],
+  [0.75,0.80,0.70,0.75],
+  [0.65,0.90,0.60,0.85],
+  [0.90,0.60,0.95,0.65],
+  [0.55,0.80,0.50,0.75],
+  [0.80,0.50,0.85,0.55],
+  [0.65,0.80,0.60,0.75],
 ];
 
-window.drawHeat = function (data, corner, btn) {
-  document.querySelectorAll('.csb').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
+const CORNER_LABELS = [
+  [0.44,0.41,'T1-T2'],[0.24,0.22,'T3'],[0.10,0.38,'T4-T6'],
+  [0.17,0.64,'T7'],[0.53,0.71,'T8-T9'],[0.88,0.64,'T10 Signes'],
+  [0.93,0.33,'T11'],[0.76,0.13,'T12'],[0.76,0.44,'T13'],
+  [0.60,0.30,'T14-T15'],[0.44,0.53,'Mistral →'],
+];
 
-  const ci = ['FL', 'FR', 'RL', 'RR'].indexOf(corner);
-  const avgT = data.reduce((s, d) => s + d[`${corner}_temp`], 0) / data.length;
-  const tf = Math.min(1, Math.max(0, (avgT - 20) / 100));
+export function heatColor(n) {
+  const stops = [[74,144,217],[100,190,100],[245,166,35],[232,64,64]];
+  const t = n * (stops.length - 1), i = Math.floor(t), f = t - i;
+  const a = stops[Math.min(i, stops.length-2)], b = stops[Math.min(i+1, stops.length-1)];
+  return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`;
+}
 
-  // Compute stress per segment
-  const stress = SEG_LOADS.map(s => s[ci] * tf);
-  const mn = Math.min(...stress), mx = Math.max(...stress);
-  const nm = stress.map(v => (v - mn) / (mx - mn + 0.001));
-
-  const cv = document.getElementById('heatC');
-  const cx = cv.getContext('2d');
-  const W = cv.width, H = cv.height;
-  cx.clearRect(0, 0, W, H);
-
-  // Background
-  cx.fillStyle = '#1a1a1a';
-  cx.fillRect(0, 0, W, H);
-
-  // Draw asphalt base (slightly lighter background for circuit area)
-  cx.strokeStyle = '#2a2a2a';
-  cx.lineWidth = 18;
-  cx.lineJoin = 'round';
-  cx.lineCap = 'round';
-
-  function tx(x) { return 30 + x * (W - 60); }
-  function ty(y) { return H - 20 - y * (H - 40); }
-
-  function heatColor(n) {
-    const stops = [
-      [74, 144, 217],
-      [100, 190, 100],
-      [245, 166, 35],
-      [232, 64, 64]
-    ];
-    const t = n * (stops.length - 1);
-    const i = Math.floor(t);
-    const f = t - i;
-    const a = stops[Math.min(i, stops.length - 2)];
-    const b = stops[Math.min(i + 1, stops.length - 1)];
-    return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`;
-  }
-
-  // First pass: draw thick dark base track outline
-  cx.beginPath();
-  let first = true;
-  for (const seg of TRACK_SEGMENTS) {
-    for (const pt of seg.pts) {
-      if (first) { cx.moveTo(tx(pt[0]), ty(pt[1])); first = false; }
-      else cx.lineTo(tx(pt[0]), ty(pt[1]));
-    }
-  }
-  cx.strokeStyle = '#2d2d2d';
-  cx.lineWidth = 22;
-  cx.stroke();
-
-  // Second pass: draw white track surface
-  cx.beginPath();
-  first = true;
-  for (const seg of TRACK_SEGMENTS) {
-    for (const pt of seg.pts) {
-      if (first) { cx.moveTo(tx(pt[0]), ty(pt[1])); first = false; }
-      else cx.lineTo(tx(pt[0]), ty(pt[1]));
-    }
-  }
-  cx.strokeStyle = '#383838';
-  cx.lineWidth = 16;
-  cx.stroke();
-
-  // Third pass: draw heat colour per segment
-  TRACK_SEGMENTS.forEach((seg, i) => {
-    if (seg.pts.length < 2) return;
+export function drawTrackBase(cx, W, H, tx, ty) {
+  function strokeAll(color, width, dash) {
     cx.beginPath();
-    cx.moveTo(tx(seg.pts[0][0]), ty(seg.pts[0][1]));
-    for (let p = 1; p < seg.pts.length; p++) {
-      cx.lineTo(tx(seg.pts[p][0]), ty(seg.pts[p][1]));
+    let first = true;
+    for (const seg of TRACK_PATH) {
+      for (const pt of seg.pts) {
+        if (first) { cx.moveTo(tx(pt[0]), ty(pt[1])); first = false; }
+        else cx.lineTo(tx(pt[0]), ty(pt[1]));
+      }
     }
-    cx.strokeStyle = heatColor(nm[i]);
-    cx.lineWidth = 8;
-    cx.lineCap = 'round';
+    cx.strokeStyle = color;
+    cx.lineWidth = width;
     cx.lineJoin = 'round';
+    cx.lineCap = 'round';
+    if (dash) cx.setLineDash(dash); else cx.setLineDash([]);
     cx.stroke();
+    cx.setLineDash([]);
+  }
+  strokeAll('#111', 26);
+  strokeAll('#3a3a3a', 18);
+  strokeAll('#555', 20, [2, 16]);
+}
 
-    // Update legend dot colour
-    const dot = document.getElementById(`segDot${i}`);
-    if (dot) dot.style.background = heatColor(nm[i]);
-  });
-
-  // Corner labels
-  const labels = [
-    { text: 'S/F', x: 0.30, y: 0.04 },
-    { text: 'Verrerie', x: 0.63, y: 0.27 },
-    { text: 'Chicane', x: 0.72, y: 0.20 },
-    { text: 'Ste-Baume', x: 0.82, y: 0.40 },
-    { text: 'Mistral ▶', x: 0.50, y: 0.56 },
-    { text: 'Signes', x: 0.06, y: 0.43 },
-    { text: 'Beausset', x: 0.30, y: 0.20 },
-    { text: "Epingle", x: 0.06, y: 0.06 },
-  ];
-  cx.font = '10px Consolas, monospace';
+export function drawCornerLabels(cx, tx, ty) {
+  cx.font = '9px Consolas, monospace';
   cx.textAlign = 'center';
-  labels.forEach(l => {
-    cx.fillStyle = '#555555';
-    cx.fillText(l.text, tx(l.x), ty(l.y));
+  CORNER_LABELS.forEach(([x, y, text]) => {
+    cx.fillStyle = '#666';
+    cx.fillText(text, tx(x), ty(y));
   });
+}
 
-  // Start/finish line
-  const sfx = tx(0.08);
-  const sfy = ty(0.08);
+export function drawSFLine(cx, tx, ty) {
+  const sfx = tx(0.62), sfy = ty(0.45);
+  cx.save();
+  cx.translate(sfx, sfy);
+  cx.rotate(-Math.PI / 2);
   cx.beginPath();
-  cx.moveTo(sfx, sfy - 12);
-  cx.lineTo(sfx, sfy + 12);
-  cx.strokeStyle = '#ffffff44';
-  cx.lineWidth = 2;
+  cx.moveTo(-12, 0); cx.lineTo(12, 0);
+  cx.strokeStyle = '#ffffff88';
+  cx.lineWidth = 3;
   cx.setLineDash([3, 3]);
   cx.stroke();
   cx.setLineDash([]);
+  cx.restore();
+  cx.fillStyle = '#ffffff66';
+  cx.font = '9px Consolas';
+  cx.textAlign = 'left';
+  cx.fillText('S/F', tx(0.63), ty(0.43));
+}
 
-  // Colour bar legend
-  const barX = W - 22, barY = 20, barH = H - 45;
+export function drawColorBar(cx, W, H, PAD, minLabel, maxLabel) {
+  const barX = W - 18, barY = PAD, barH = H - PAD * 2;
   const grad = cx.createLinearGradient(barX, barY, barX, barY + barH);
   grad.addColorStop(0, 'rgb(232,64,64)');
   grad.addColorStop(0.5, 'rgb(245,166,35)');
@@ -292,12 +205,45 @@ window.drawHeat = function (data, corner, btn) {
   cx.fillStyle = '#9d9d9d';
   cx.font = '9px Consolas';
   cx.textAlign = 'left';
-  cx.fillText('Hi', barX - 1, barY + 9);
-  cx.fillText('Lo', barX - 1, barY + barH);
+  cx.fillText(maxLabel, barX - 2, barY + 9);
+  cx.fillText(minLabel, barX - 2, barY + barH);
+}
 
-  // Info label
-  cx.fillStyle = '#569cd6';
-  cx.font = '10px Consolas';
-  cx.textAlign = 'center';
-  cx.fillText(`${corner} tyre  —  avg ${avgT.toFixed(1)} °C  —  Circuit Paul Ricard (GT4 layout)`, W / 2, H - 4);
+window.drawHeat = function (data, corner, btn) {
+  document.querySelectorAll('.csb').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const ci = ['FL','FR','RL','RR'].indexOf(corner);
+  const avgT = data.reduce((s, d) => s + d[`${corner}_temp`], 0) / data.length;
+  const tf = Math.min(1, Math.max(0, (avgT - 20) / 100));
+  const stress = SEG_LOADS.map(s => s[ci] * tf);
+  const mn = Math.min(...stress), mx = Math.max(...stress);
+  const nm = stress.map(v => (v - mn) / (mx - mn + 0.001));
+
+  const cv = document.getElementById('heatC');
+  const cx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const PAD = 40;
+  cx.clearRect(0, 0, W, H);
+  cx.fillStyle = '#1a1a1a'; cx.fillRect(0, 0, W, H);
+  const tx = x => PAD + x * (W - PAD * 2);
+  const ty = y => H - PAD - y * (H - PAD * 2);
+
+  drawTrackBase(cx, W, H, tx, ty);
+
+  TRACK_PATH.forEach((seg, i) => {
+    if (seg.pts.length < 2) return;
+    cx.beginPath();
+    cx.moveTo(tx(seg.pts[0][0]), ty(seg.pts[0][1]));
+    for (let p = 1; p < seg.pts.length; p++) cx.lineTo(tx(seg.pts[p][0]), ty(seg.pts[p][1]));
+    cx.strokeStyle = heatColor(nm[seg.si]);
+    cx.lineWidth = 8; cx.lineCap = 'round'; cx.lineJoin = 'round';
+    cx.stroke();
+  });
+
+  drawCornerLabels(cx, tx, ty);
+  drawSFLine(cx, tx, ty);
+  drawColorBar(cx, W, H, PAD, '0%', '100%');
+
+  cx.fillStyle = '#569cd6'; cx.font = '10px Consolas'; cx.textAlign = 'center';
+  cx.fillText(`${corner} tyre  —  avg ${avgT.toFixed(1)} °C  —  Circuit Paul Ricard`, W / 2, H - 6);
 };
