@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chart Detail — McLaren Artura GT4</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    .detail-wrap {
+      background: #1e1e1e;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .detail-header {
+      background: #252526;
+      border-bottom: 1px solid #3c3c3c;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .back-btn {
+      background: transparent;
+      border: 1px solid #3c3c3c;
+      color: #9d9d9d;
+      padding: 5px 12px;
+      font-size: 11px;
+      font-family: Consolas, monospace;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .back-btn:hover { background: #2a2a2a; color: #ccc; }
+    .detail-title {
+      font-size: 14px;
+      color: #9cdcfe;
+      font-family: Consolas, monospace;
+      font-weight: 500;
+    }
+    .detail-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      padding: 16px 20px 0;
+    }
+    .stat-card {
+      background: #252526;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      padding: 10px 12px;
+    }
+    .stat-label {
+      font-size: 10px;
+      color: #6a9955;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 4px;
+      font-family: Consolas, monospace;
+    }
+    .stat-value {
+      font-size: 18px;
+      font-weight: 500;
+      color: #d4d4d4;
+      font-family: Consolas, monospace;
+    }
+    .stat-unit {
+      font-size: 10px;
+      color: #569cd6;
+      margin-left: 3px;
+    }
+    .chart-area {
+      flex: 1;
+      padding: 16px 20px 20px;
+      min-height: 0;
+    }
+    .chart-container {
+      background: #252526;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      padding: 16px;
+      height: calc(100vh - 220px);
+      min-height: 400px;
+      position: relative;
+    }
+    .tap-hint {
+      font-size: 10px;
+      color: #3c3c3c;
+      font-family: Consolas, monospace;
+      text-align: right;
+      padding: 4px 20px 0;
+    }
+  </style>
+</head>
+<body>
+<div class="detail-wrap">
+
+  <div class="detail-header">
+    <button class="back-btn" onclick="window.close()">← back</button>
+    <span class="detail-title" id="chartTitle">Chart</span>
+  </div>
+
+  <div class="detail-stats" id="statsRow"></div>
+
+  <div class="tap-hint">Hover or tap any point to see exact values</div>
+
+  <div class="chart-area">
+    <div class="chart-container">
+      <canvas id="detailChart" role="img" aria-label="Detailed chart view"></canvas>
+    </div>
+  </div>
+
+</div>
+<script type="module">
+  import { initDetailPage } from './src/chartdetail.js';
+
+  // Build stats from raw data
+  const raw = sessionStorage.getItem('chartDetail');
+  if (raw) {
+    const { datasets, statsData } = JSON.parse(raw);
+    const statsRow = document.getElementById('statsRow');
+    if (statsData && statsData.length > 0) {
+      statsRow.innerHTML = statsData.map(s => `
+        <div class="stat-card">
+          <div class="stat-label">${s.label}</div>
+          <div class="stat-value">${s.value}<span class="stat-unit">${s.unit || ''}</span></div>
+        </div>
+      `).join('');
+    }
+  }
+
+  initDetailPage();
+</script>
+</body>
+</html>
