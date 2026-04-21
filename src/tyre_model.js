@@ -1,110 +1,167 @@
 export const CORNERS = ['FL', 'FR', 'RL', 'RR'];
 
-// Load coefficients per corner — GT4 mid-engine bias
-// RL is most loaded: traction + lateral load on Paul Ricard's many right handers
-export const LOAD_COEFF = { FL: 0.88, FR: 1.08, RL: 1.12, RR: 0.92 };
+// GT4 mid-engine load bias (Artura-style)
+export const LOAD_COEFF = {
+  FL: 0.92,
+  FR: 1.10,
+  RL: 1.08,
+  RR: 0.90
+};
 
 export const TEMP_CRITICAL_OFFSET = 15;
 
-// Tyre thermal inertia — how quickly each corner responds to load changes
-// Rear tyres have more mass/contact patch so heat up slightly faster
-const THERMAL_INERTIA = { FL: 0.82, FR: 0.82, RL: 0.88, RR: 0.88 };
+// Thermal inertia (rear slightly more stable)
+const THERMAL_INERTIA = {
+  FL: 0.85,
+  FR: 0.85,
+  RL: 0.90,
+  RR: 0.90
+};
+
+// -----------------------------
+// REALISTIC DEGRADATION MODEL
+// -----------------------------
+
+function wearCurve(x) {
+  // x = degradation progress (0–1)
+  // Slow start → stable → accelerating wear at end
+  return Math.pow(x, 1.35);
+}
 
 export function tempGripFactor(temp, tempLow, tempHigh) {
   if (temp >= tempLow && temp <= tempHigh) return 1.0;
+
   if (temp < tempLow) {
-    // Cold tyre — grip builds slowly from 30°C
-    const ratio = Math.max(0, (temp - 25) / (tempLow - 25));
-    return 0.60 + 0.40 * Math.pow(ratio, 1.4);
+    const r = Math.max(0, (temp - 25) / (tempLow - 25));
+    return 0.62 + 0.38 * Math.pow(r, 1.5);
   }
-  // Over temp — thermal degradation cliff
-  const critTemp = tempHigh + TEMP_CRITICAL_OFFSET;
-  const excess = Math.min(1, (temp - tempHigh) / (critTemp - tempHigh));
-  return Math.max(0.48, 1 - 0.52 * Math.pow(excess, 1.3));
+
+  const crit = tempHigh + TEMP_CRITICAL_OFFSET;
+  const excess = Math.min(1, (temp - tempHigh) / (crit - tempHigh));
+  return Math.max(0.50, 1 - 0.50 * Math.pow(excess, 1.4));
 }
 
 export function createTyreState(coldPsi) {
   const state = {};
+
   for (const c of CORNERS) {
     state[c] = {
-      temp: 26,           // starting close to ambient
+      temp: 26,
+      coreTemp: 24,
       pressure: coldPsi,
-      grip: 0.72,         // cold tyre grip penalty at start
-      degradation: 0.0,
-      coreTemp: 24,       // tyre core temperature (slower to change)
+
+      // start slightly "green" (real GT tyres are not max grip instantly)
+      grip: 0.70,
+
+      degradation: 0,
+
+      // rubber state phases
+      lifePhase: 0 // 0 = new, 1 = optimal, 2 = falling off
     };
   }
+
   return state;
 }
 
 export function updateTyres(state, params) {
   const {
-    trackTemp, airTemp, fuelMass, style,
-    isWarmup, coldPsi, tempLow, tempHigh, degRate
+    trackTemp,
+    airTemp,
+    fuelMass,
+    style,
+    isWarmup,
+    coldPsi,
+    tempLow,
+    tempHigh,
+    degRate
   } = params;
 
   const result = {};
-  const amb = (trackTemp * 0.65 + airTemp * 0.35); // track temp dominates surface heating
+  const amb = trackTemp * 0.7 + airTemp * 0.3;
 
   for (const c of CORNERS) {
     const s = { ...state[c] };
-    const lc = LOAD_COEFF[c];
-    const ti = THERMAL_INERTIA[c];
 
-    // Fuel mass effect on vertical load
-    const ff = 1.0 + Math.max(0, fuelMass - 50) * 0.0006;
+    const load = LOAD_COEFF[c];
+    const inertia = THERMAL_INERTIA[c];
 
-    // Heat generation from tyre work
-    const heatBase = isWarmup ? 4.5 : 7.2;
-    const heat = heatBase * lc * style * ff * ti;
+    // Fuel load effect
+    const fuelFactor = 1 + Math.max(0, fuelMass - 50) * 0.00055;
 
-    // Convective cooling — proportional to temp delta above ambient
-    const cool = 0.20 * Math.max(0, s.temp - amb);
+    // -----------------------------
+    // THERMAL MODEL (your version, refined slightly)
+    // -----------------------------
+    const heatBase = isWarmup ? 4.0 : 6.8;
+    const heat = heatBase * load * style * fuelFactor * inertia;
 
-    // Conductive cooling to road surface (minor)
-    const roadCool = 0.04 * Math.max(0, s.temp - trackTemp);
+    const cool = 0.22 * Math.max(0, s.temp - amb);
+    const roadCool = 0.03 * Math.max(0, s.temp - trackTemp);
 
-    // Lap-to-lap variation
-    const noise = (Math.random() - 0.5) * 1.6;
+    const noise = (Math.random() - 0.5) * 1.2;
 
     s.temp = Math.max(amb - 2, s.temp + heat - cool - roadCool + noise);
 
-    // Core temp lags surface by ~8°C
-    s.coreTemp = s.coreTemp + (s.temp - s.coreTemp) * 0.25;
+    s.coreTemp += (s.temp - s.coreTemp) * 0.22;
 
-    // Pressure from temperature (Ideal Gas Law approximation)
-    // Cold fill at 15°C. 0.052 PSI per °C above fill temp
+    // -----------------------------
+    // PRESSURE MODEL
+    // -----------------------------
     const deltaTemp = s.temp - 15;
-    s.pressure = Math.max(coldPsi, coldPsi + 0.052 * deltaTemp);
+    s.pressure = coldPsi + 0.052 * deltaTemp;
 
-    // Degradation model
+    // -----------------------------
+    // WEAR MODEL (FIXED)
+    // -----------------------------
+
     const inWindow = s.temp >= tempLow && s.temp <= tempHigh;
     const overTemp = s.temp > tempHigh + TEMP_CRITICAL_OFFSET;
     const underTemp = s.temp < tempLow;
 
-    let dg;
+    // Base wear scaling
+    let wear = degRate * style;
+
+    // Load effect (GT4: front tyres suffer more)
+    wear *= (0.85 + load * 0.35);
+
+    // Temperature effects (single influence, not double-penalty)
     if (inWindow) {
-      // Optimal window — minimum wear
-      dg = degRate * 0.65 * style;
+      wear *= 0.65;
+      s.lifePhase = Math.min(1, s.lifePhase + 0.002);
     } else if (overTemp) {
-      // Thermal cliff — rubber graining and blistering
-      const excess = (s.temp - (tempHigh + TEMP_CRITICAL_OFFSET)) / 10;
-      dg = (degRate + 0.004 * excess) * style;
+      wear *= 1.6;
+      s.lifePhase = Math.min(2, s.lifePhase + 0.005);
     } else if (underTemp) {
-      // Cold tyre — sliding before heat build-up
-      const coldFactor = 1.8 - (s.temp / tempLow) * 0.8;
-      dg = degRate * coldFactor * style;
-    } else {
-      dg = degRate * style;
+      wear *= 1.3;
     }
 
-    s.degradation = Math.min(1, s.degradation + dg);
+    // End-of-life acceleration (key realism improvement)
+    const endLifeMultiplier = 1 + wearCurve(s.degradation) * 1.4;
+    wear *= endLifeMultiplier;
 
-    // Grip: combination of rubber condition and temperature window
+    s.degradation = Math.min(1, s.degradation + wear);
+
+    // -----------------------------
+    // GRIP MODEL (REALISTIC SHAPE)
+    // -----------------------------
+
     const tempFactor = tempGripFactor(s.temp, tempLow, tempHigh);
-    s.grip = Math.max(0, (1 - s.degradation * 0.95) * tempFactor);
+
+    // Rubber condition curve (non-linear)
+    const rubberFactor = 1 - wearCurve(s.degradation) * 0.92;
+
+    // slight "peak grip phase bonus"
+    const phaseBonus =
+      s.lifePhase < 0.6 ? 1.02 :
+      s.lifePhase < 1.2 ? 1.00 :
+      0.97;
+
+    s.grip = Math.max(
+      0,
+      rubberFactor * tempFactor * phaseBonus
+    );
 
     result[c] = s;
   }
+
   return result;
 }
